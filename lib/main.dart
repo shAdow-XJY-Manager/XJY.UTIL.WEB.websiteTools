@@ -13,10 +13,10 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'shadow online tools',
+      title: 'Shadow Online Tools',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.white),
+        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF685BFF)),
         fontFamily: 'Noto',
         useMaterial3: true,
       ),
@@ -24,5 +24,4 @@ class MyApp extends StatelessWidget {
     );
   }
 }
-
 
