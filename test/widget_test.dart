@@ -1,30 +1,23 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-
 import 'package:shadow_tools/main.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
+  testWidgets('tools start with image conversion disabled and switch workbenches', (tester) async {
+    tester.view.physicalSize = const Size(1200, 1100);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
     await tester.pumpWidget(const MyApp());
-
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
-
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
+    await tester.pumpAndSettle();
+    expect(find.text('频率工具台'), findsOneWidget);
+    expect(find.byType(ChoiceChip), findsNWidgets(5));
+    final generate = find.ancestor(of: find.text('生成图片'), matching: find.byWidgetPredicate((w) => w is FilledButton));
+    expect(tester.widget<FilledButton>(generate).onPressed, isNull);
+    await tester.tap(find.byWidgetPredicate((w) => w is ChoiceChip && (w.label as Padding).child is Text && ((w.label as Padding).child as Text).data == '编码解码'));
     await tester.pump();
-
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    expect(find.text('编码 / 解码'), findsOneWidget);
+    expect(find.text('转换文本'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 }
