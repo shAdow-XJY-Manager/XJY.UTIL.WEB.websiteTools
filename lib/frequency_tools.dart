@@ -228,7 +228,14 @@ class _FrequencyToolsState extends State<FrequencyTools> {
 
 class ImageWorkbench extends StatefulWidget {
   final bool resize;
-  const ImageWorkbench({super.key, required this.resize});
+  final Future<String> Function()? pickImage;
+  final Future<String> Function(String)? convertImage;
+  const ImageWorkbench({
+    super.key,
+    required this.resize,
+    this.pickImage,
+    this.convertImage,
+  });
   @override
   State<ImageWorkbench> createState() => _ImageWorkbenchState();
 }
@@ -243,6 +250,9 @@ class _ImageWorkbenchState extends State<ImageWorkbench> {
   String format = 'png', error = '', status = '';
   bool busy = false, locked = true;
   double quality = 0.92;
+  int conversionVersion = 0;
+  Object get inputSnapshot =>
+      (source, width.text, height.text, format, background.text, quality);
   @override
   void dispose() {
     originalProvider?.evict();
@@ -258,6 +268,7 @@ class _ImageWorkbenchState extends State<ImageWorkbench> {
     status = '';
   });
   Future<void> pick() async {
+    if (busy) return;
     setState(() {
       busy = true;
       error = '';
@@ -265,7 +276,8 @@ class _ImageWorkbenchState extends State<ImageWorkbench> {
     });
     try {
       final data =
-          jsonDecode(await browser.pickImage()) as Map<String, dynamic>;
+          jsonDecode(await (widget.pickImage ?? browser.pickImage)())
+              as Map<String, dynamic>;
       if (!mounted) return;
       if (data['error'] != null) throw FormatException(data['error'] as String);
       if (data['cancelled'] != true)
@@ -302,6 +314,11 @@ class _ImageWorkbenchState extends State<ImageWorkbench> {
   }
 
   Future<void> convert() async {
+    if (busy || source == null) return;
+    final version = ++conversionVersion;
+    final snapshot = inputSnapshot;
+    bool isCurrent() =>
+        mounted && version == conversionVersion && snapshot == inputSnapshot;
     setState(() {
       busy = true;
       error = '';
@@ -317,7 +334,7 @@ class _ImageWorkbenchState extends State<ImageWorkbench> {
         throw const FormatException('JPEG 底色请输入 6 位 HEX，例如 #FFFFFF。');
       final result =
           jsonDecode(
-                await browser.convertImage(
+                await (widget.convertImage ?? browser.convertImage)(
                   jsonEncode({
                     'data': source!['data'],
                     'width': w,
@@ -329,7 +346,7 @@ class _ImageWorkbenchState extends State<ImageWorkbench> {
                 ),
               )
               as Map<String, dynamic>;
-      if (!mounted) return;
+      if (!isCurrent()) return;
       if (result['error'] != null)
         throw FormatException(result['error'] as String);
       setState(() {
@@ -337,12 +354,12 @@ class _ImageWorkbenchState extends State<ImageWorkbench> {
         status = '转换完成 · ${(result['bytes'] as num) / 1024 ~/ 1} KB';
       });
     } catch (e) {
-      if (mounted)
+      if (isCurrent())
         setState(
           () => error = e is FormatException ? e.message : '转换失败，请重新选择图片。',
         );
     } finally {
-      if (mounted) setState(() => busy = false);
+      if (mounted && version == conversionVersion) setState(() => busy = false);
     }
   }
 
@@ -540,6 +557,7 @@ class _ImageWorkbenchState extends State<ImageWorkbench> {
           padding: const EdgeInsets.only(top: 14),
           child: TextField(
             controller: background,
+            enabled: !busy && source != null,
             decoration: const InputDecoration(labelText: '透明区域底色 / HEX'),
             onChanged: (_) => invalidate(),
           ),
@@ -621,46 +639,48 @@ class _ImageWorkbenchState extends State<ImageWorkbench> {
         ),
     ],
   );
-  Widget resultPane({bool dense = false}) => Container(
-    padding: const EdgeInsets.all(18),
-    decoration: BoxDecoration(
-      color: FrequencyPalette.background,
-      border: Border.all(color: FrequencyPalette.border),
+  Widget resultPane({bool dense = false}) => Material(
+    color: FrequencyPalette.background,
+    shape: RoundedRectangleBorder(
+      side: const BorderSide(color: FrequencyPalette.border),
       borderRadius: BorderRadius.circular(7),
     ),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        step('04', '预览与下载'),
-        if (source != null && dense)
-          ExpansionTile(
-            tilePadding: EdgeInsets.zero,
-            title: const Text('查看原图', style: TextStyle(fontSize: 13)),
-            children: [preview('原图', source?['data'] as String?, '')],
+    child: Padding(
+      padding: const EdgeInsets.all(18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          step('04', '预览与下载'),
+          if (source != null && dense)
+            ExpansionTile(
+              tilePadding: EdgeInsets.zero,
+              title: const Text('查看原图', style: TextStyle(fontSize: 13)),
+              children: [preview('原图', source?['data'] as String?, '')],
+            ),
+          preview(
+            '导出预览',
+            output?['preview'] as String?,
+            output == null
+                ? '生成后在这里检查尺寸、格式与效果。'
+                : '${output!['format'].toString().toUpperCase()} · ${output!['width']} × ${output!['height']} · ${(output!['bytes'] as num) / 1024 ~/ 1} KB',
+            converted: true,
           ),
-        preview(
-          '导出预览',
-          output?['preview'] as String?,
-          output == null
-              ? '生成后在这里检查尺寸、格式与效果。'
-              : '${output!['format'].toString().toUpperCase()} · ${output!['width']} × ${output!['height']} · ${(output!['bytes'] as num) / 1024 ~/ 1} KB',
-          converted: true,
-        ),
-        const SizedBox(height: 18),
-        SizedBox(
-          width: double.infinity,
-          child: OutlinedButton.icon(
-            onPressed: output == null || busy ? null : download,
-            icon: const Icon(Icons.download_rounded),
-            label: const Text('下载图片'),
+          const SizedBox(height: 18),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: output == null || busy ? null : download,
+              icon: const Icon(Icons.download_rounded),
+              label: const Text('下载图片'),
+            ),
           ),
-        ),
-        const SizedBox(height: 10),
-        const Text(
-          '修改参数后，请重新生成图片。',
-          style: TextStyle(fontSize: 12, color: FrequencyPalette.muted),
-        ),
-      ],
+          const SizedBox(height: 10),
+          const Text(
+            '修改参数后，请重新生成图片。',
+            style: TextStyle(fontSize: 12, color: FrequencyPalette.muted),
+          ),
+        ],
+      ),
     ),
   );
   @override
